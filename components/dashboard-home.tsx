@@ -1,29 +1,107 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { ArrowUpRight, TrendingUp, Package, DollarSign, AlertTriangle } from "lucide-react"
 import { LineChart, BarChart } from "@/components/ui/chart"
 
-export function DashboardHome() {
-  // Sample data for charts
-  const lineChartData = [
-    { name: "Jan", value: 400 },
-    { name: "Feb", value: 300 },
-    { name: "Mar", value: 500 },
-    { name: "Apr", value: 450 },
-    { name: "May", value: 470 },
-    { name: "Jun", value: 600 },
-  ]
+// Define types for the data structures
+interface SalesData {
+  date: string;
+  amount: number;
+  quantity: number;
+  product?: string;
+}
 
-  const barChartData = [
-    { name: "Product A", value: 120 },
-    { name: "Product B", value: 80 },
-    { name: "Product C", value: 40 },
-    { name: "Product D", value: 180 },
-    { name: "Product E", value: 90 },
-  ]
+interface InventoryData {
+  name: string;
+  current: number;
+  recommended: number;
+}
+
+interface Product {
+  product: string;
+  amount: number;
+}
+
+interface Trend {
+  name: string;
+  description: string;
+  searchVolume: number;
+}
+
+interface Recommendation {
+  title: string;
+  description: string;
+  items?: Array<{ name: string; value: string }>;
+  action: string;
+}
+
+interface ApiResponse {
+  historicalData?: SalesData[];
+  inventoryStatus?: InventoryData[];
+  metrics?: {
+    totalSales?: number;
+    monthlyGrowth?: number;
+    critical?: number;
+    newTrends?: number;
+  };
+  topProducts?: Product[];
+  trends?: Trend[];
+  lowStock?: Array<{ name: string; currentStock: number; recommendedOrder: number }>;
+  needsReorder?: Array<{ name: string; currentStock: number; recommendedOrder: number }>;
+  recommendations?: Recommendation[];
+  predictions?: SalesData[]; // Add predictions property
+}
+
+export function DashboardHome() {
+  const [data, setData] = useState<ApiResponse | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const response = await fetch("/api/process-data", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ dataType: "sales" }), // or "customer", "inventory"
+        });
+        const result = await response.json();
+        if (result.error) {
+          setError(result.message);
+        } else {
+          setData(result.results);
+        }
+      } catch (err) {
+        setError("Failed to fetch data");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  if (loading) {
+    return <div>Loading...</div>;
+  }
+
+  if (error) {
+    return <div>{error}</div>;
+  }
+
+  if (!data) {
+    return <div>No datasets uploaded. Please upload data in the upload tab to see insights.</div>;
+  }
+
+  // Sample data for charts (replace with actual data from API)
+  const lineChartData = data.historicalData || [];
+  const barChartData = data.inventoryStatus || [];
 
   return (
     <div className="space-y-6">
@@ -40,10 +118,10 @@ export function DashboardHome() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">P 45,231.89</div>
+            <div className="text-2xl font-bold">P {data.metrics?.totalSales || 0}</div>
             <p className="text-xs text-muted-foreground">
               <span className="text-green-500 flex items-center">
-                +20.1% <ArrowUpRight className="ml-1 h-3 w-3" />
+                +{data.metrics?.monthlyGrowth || 0}% <ArrowUpRight className="ml-1 h-3 w-3" />
               </span>{" "}
               from last month
             </p>
@@ -55,7 +133,7 @@ export function DashboardHome() {
             <AlertTriangle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">3 Products</div>
+            <div className="text-2xl font-bold">{data.inventoryStatus?.filter(item => item.current < item.recommended).length || 0} Products</div>
             <p className="text-xs text-muted-foreground">Require immediate attention</p>
           </CardContent>
         </Card>
@@ -65,10 +143,10 @@ export function DashboardHome() {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">5 Detected</div>
+            <div className="text-2xl font-bold">{data.trends?.length || 0} Detected</div>
             <p className="text-xs text-muted-foreground">
               <span className="text-green-500 flex items-center">
-                +2 <ArrowUpRight className="ml-1 h-3 w-3" />
+                +{data.trends?.reduce((sum, trend) => sum + trend.searchVolume, 0) || 0} <ArrowUpRight className="ml-1 h-3 w-3" />
               </span>{" "}
               new trends this week
             </p>
@@ -86,10 +164,10 @@ export function DashboardHome() {
           <CardContent className="h-80">
             <LineChart
               data={lineChartData}
-              index="name"
-              categories={["value"]}
+              index="date"
+              categories={["amount"]}
               colors={["blue"]}
-              valueFormatter={(value) => `${value} units`}
+              valueFormatter={(value: number) => `${value} units`}
               className="h-full"
             />
           </CardContent>
@@ -103,9 +181,9 @@ export function DashboardHome() {
             <BarChart
               data={barChartData}
               index="name"
-              categories={["value"]}
-              colors={["blue"]}
-              valueFormatter={(value) => `${value} units`}
+              categories={["current", "recommended"]}
+              colors={["blue", "green"]}
+              valueFormatter={(value: number) => `${value} units`}
               className="h-full"
             />
           </CardContent>
@@ -139,45 +217,23 @@ export function DashboardHome() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <div className="mr-4 h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                  <Package className="h-5 w-5 text-blue-600" />
+            {data.topProducts?.map((product: Product, index: number) => (
+              <div key={index} className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <div className="mr-4 h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                    <Package className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium">{product.product}</p>
+                    <p className="text-sm text-muted-foreground">Electronics</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-medium">Wireless Earbuds Pro</p>
-                  <p className="text-sm text-muted-foreground">Electronics</p>
-                </div>
+                <Badge className="bg-green-100 text-green-800 hover:bg-green-100">+{product.amount}% Demand</Badge>
               </div>
-              <Badge className="bg-green-100 text-green-800 hover:bg-green-100">+24% Demand</Badge>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <div className="mr-4 h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                  <Package className="h-5 w-5 text-blue-600" />
-                </div>
-                <div>
-                  <p className="font-medium">Smart Home Hub</p>
-                  <p className="text-sm text-muted-foreground">Smart Home</p>
-                </div>
-              </div>
-              <Badge className="bg-green-100 text-green-800 hover:bg-green-100">+18% Demand</Badge>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <div className="mr-4 h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                  <Package className="h-5 w-5 text-blue-600" />
-                </div>
-                <div>
-                  <p className="font-medium">Ergonomic Office Chair</p>
-                  <p className="text-sm text-muted-foreground">Furniture</p>
-                </div>
-              </div>
-              <Badge className="bg-green-100 text-green-800 hover:bg-green-100">+15% Demand</Badge>
-            </div>
+            ))}
           </div>
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }
