@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge"
 import { ArrowUpRight, TrendingUp, Package, DollarSign, AlertTriangle } from "lucide-react"
 import { LineChart, BarChart } from "@/components/ui/chart"
 
-// Define types for the data structures
 interface SalesData {
   date: string;
   amount: number;
@@ -53,7 +52,7 @@ interface ApiResponse {
   lowStock?: Array<{ name: string; currentStock: number; recommendedOrder: number }>;
   needsReorder?: Array<{ name: string; currentStock: number; recommendedOrder: number }>;
   recommendations?: Recommendation[];
-  predictions?: SalesData[]; // Add predictions property
+  predictions?: SalesData[];
 }
 
 export function DashboardHome() {
@@ -66,10 +65,8 @@ export function DashboardHome() {
       try {
         const response = await fetch("/api/process-data", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ dataType: "sales" }), // or "customer", "inventory"
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dataType: "sales" }),
         });
         const result = await response.json();
         if (result.error) {
@@ -77,7 +74,7 @@ export function DashboardHome() {
         } else {
           setData(result.results);
         }
-      } catch (err) {
+      } catch {
         setError("Failed to fetch data");
       } finally {
         setLoading(false);
@@ -87,21 +84,11 @@ export function DashboardHome() {
     fetchData();
   }, []);
 
-  if (loading) {
-    return <div>Loading...</div>;
-  }
+  if (loading) return <div>Loading...</div>;
+  if (error) return <div>{error}</div>;
+  if (!data) return <div>No datasets uploaded. Please upload data in the upload tab to see insights.</div>;
 
-  if (error) {
-    return <div>{error}</div>;
-  }
-
-  if (!data) {
-    return <div>No datasets uploaded. Please upload data in the upload tab to see insights.</div>;
-  }
-
-  // Sample data for charts (replace with actual data from API)
-  const lineChartData = data.historicalData || [];
-  const barChartData = data.inventoryStatus || [];
+  const lowStockItems = data.inventoryStatus?.filter(item => item.current < 8) || [];
 
   return (
     <div className="space-y-6">
@@ -127,28 +114,27 @@ export function DashboardHome() {
             </p>
           </CardContent>
         </Card>
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Stock Alerts</CardTitle>
             <AlertTriangle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{data.inventoryStatus?.filter(item => item.current < item.recommended).length || 0} Products</div>
-            <p className="text-xs text-muted-foreground">Require immediate attention</p>
+            <div className="text-2xl font-bold">{lowStockItems.length} Products</div>
+            <p className="text-xs text-muted-foreground">Below 8 units - restock soon</p>
           </CardContent>
         </Card>
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Market Trends</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{data.trends?.length || 0} Detected</div>
+            <div className="text-2xl font-bold">{(data.trends?.length || 0) + (data.topProducts?.length || 0)}</div>
             <p className="text-xs text-muted-foreground">
-              <span className="text-green-500 flex items-center">
-                +{data.trends?.reduce((sum, trend) => sum + trend.searchVolume, 0) || 0} <ArrowUpRight className="ml-1 h-3 w-3" />
-              </span>{" "}
-              new trends this week
+              Trending products based on recent high demand
             </p>
           </CardContent>
         </Card>
@@ -158,31 +144,32 @@ export function DashboardHome() {
       <div className="grid gap-4 md:grid-cols-2">
         <Card className="col-span-1">
           <CardHeader>
-            <CardTitle>Product Demand Over Time</CardTitle>
-            <CardDescription>Monthly demand forecast for all products</CardDescription>
-          </CardHeader>
-          <CardContent className="h-80">
-            <LineChart
-              data={lineChartData}
-              index="date"
-              categories={["amount"]}
-              colors={["blue"]}
-              valueFormatter={(value: number) => `${value} units`}
-              className="h-full"
-            />
-          </CardContent>
-        </Card>
-        <Card className="col-span-1">
-          <CardHeader>
-            <CardTitle>Inventory Stock Levels</CardTitle>
-            <CardDescription>Current stock levels by product</CardDescription>
+            <CardTitle>Top Products by Sales</CardTitle>
+            <CardDescription>Products contributing the most to revenue</CardDescription>
           </CardHeader>
           <CardContent className="h-80">
             <BarChart
-              data={barChartData}
+              data={(data.topProducts || []).slice(0, 5)}
+              index="product"
+              categories={["amount"]}
+              colors={["green"]}
+              valueFormatter={(value: number) => `P ${value}`}
+              className="h-full"
+            />
+          </CardContent>
+        </Card>
+
+        <Card className="col-span-1">
+          <CardHeader>
+            <CardTitle>Inventory Stock Levels</CardTitle>
+            <CardDescription>Compare current vs recommended inventory</CardDescription>
+          </CardHeader>
+          <CardContent className="h-80">
+            <BarChart
+              data={data.inventoryStatus || []}
               index="name"
               categories={["current", "recommended"]}
-              colors={["blue", "green"]}
+              colors={["red", "blue"]}
               valueFormatter={(value: number) => `${value} units`}
               className="h-full"
             />
@@ -190,48 +177,37 @@ export function DashboardHome() {
         </Card>
       </div>
 
-      {/* Alert Cards */}
+      {/* Alerts */}
       <div className="space-y-4">
         <h2 className="text-lg font-semibold">Alerts & Notifications</h2>
         <div className="grid gap-4 md:grid-cols-2">
-          <Alert variant="destructive">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertTitle className="ml-2">Stock Alert</AlertTitle>
-            <AlertDescription>
-              Product "Premium Headphones" is running low on stock (5 units remaining).
-            </AlertDescription>
-          </Alert>
-          <Alert>
-            <Package className="h-4 w-4" />
-            <AlertTitle className="ml-2">Expiring Products</AlertTitle>
-            <AlertDescription>3 products will expire within the next 30 days.</AlertDescription>
-          </Alert>
+          {lowStockItems.map((item, idx) => (
+            <Alert key={idx} variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle className="ml-2">Stock Alert</AlertTitle>
+              <AlertDescription>
+                Product "{item.name}" is low on stock ({item.current} units left).
+              </AlertDescription>
+            </Alert>
+          ))}
         </div>
       </div>
 
-      {/* Trending Products */}
+      {/* Trending Products as Bar Chart */}
       <Card>
         <CardHeader>
           <CardTitle>Trending Products</CardTitle>
-          <CardDescription>Products with increasing demand based on market analysis</CardDescription>
+          <CardDescription>Demand growth by product</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {data.topProducts?.map((product: Product, index: number) => (
-              <div key={index} className="flex items-center justify-between">
-                <div className="flex items-center">
-                  <div className="mr-4 h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                    <Package className="h-5 w-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium">{product.product}</p>
-                    <p className="text-sm text-muted-foreground">Electronics</p>
-                  </div>
-                </div>
-                <Badge className="bg-green-100 text-green-800 hover:bg-green-100">+{product.amount}% Demand</Badge>
-              </div>
-            ))}
-          </div>
+        <CardContent className="h-80">
+          <BarChart
+            data={data.topProducts || []}
+            index="product"
+            categories={["amount"]}
+            colors={["emerald"]}
+            valueFormatter={(value: number) => `+${value}%`}
+            className="h-full"
+          />
         </CardContent>
       </Card>
     </div>

@@ -1,169 +1,84 @@
+
 "use client"
 
-import { useEffect, useRef, useState } from "react"
-import { models, service, factories, type IEmbedConfiguration } from "powerbi-client"
-import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
-import { RefreshCw } from "lucide-react"
+import { useEffect, useRef } from "react"
 
 interface PowerBIReportProps {
-  reportId: string
-  embedToken?: string
-  embedUrl?: string
-  filterPaneEnabled?: boolean
-  navContentPaneEnabled?: boolean
-  onReportLoaded?: () => void
-  onReportError?: (error: any) => void
-  className?: string
+  reportId: string;
+  embedUrl?: string;
+  filterPaneEnabled?: boolean;
+  navContentPaneEnabled?: boolean;
+  onReportLoaded?: () => void;
+  onReportError?: () => void;
 }
 
 export function PowerBIReport({
   reportId,
-  embedToken,
-  embedUrl,
-  filterPaneEnabled = true,
-  navContentPaneEnabled = true,
+  embedUrl = "https://app.powerbi.com/view?r=",
+  filterPaneEnabled = false,
+  navContentPaneEnabled = false,
   onReportLoaded,
-  onReportError,
-  className,
+  onReportError
 }: PowerBIReportProps) {
-  const reportContainerRef = useRef<HTMLDivElement>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [report, setReport] = useState<models.IReport | null>(null)
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  // This function would typically be a server action or API call to get the embed token
-  const getEmbedToken = async () => {
-    // In a real implementation, this would be a call to your backend
-    // which would then call the Power BI API to get an embed token
-    try {
-      // Simulating API call
-      return {
-        token: embedToken || "sample-token-would-come-from-server",
-        embedUrl: embedUrl || `https://app.powerbi.com/reportEmbed?reportId=${reportId}`,
-      }
-    } catch (error) {
-      console.error("Error getting embed token:", error)
-      throw error
-    }
-  }
-
-  const embedReport = async () => {
-    if (!reportContainerRef.current) return
-
-    setIsLoading(true)
-    setError(null)
-
-    try {
-      // In a real implementation, get the token from your server
-      const { token, embedUrl } = await getEmbedToken()
-
-      // Create the embed configuration
-      const embedConfig: IEmbedConfiguration = {
-        type: "report",
-        id: reportId,
-        embedUrl: embedUrl,
-        accessToken: token,
-        tokenType: models.TokenType.Embed,
-        permissions: models.Permissions.All,
-        settings: {
-          panes: {
-            filters: {
-              expanded: false,
-              visible: filterPaneEnabled,
-            },
-            pageNavigation: {
-              visible: true,
-            },
-          },
-          background: models.BackgroundType.Transparent,
-          navContentPaneEnabled: navContentPaneEnabled,
-        },
-      }
-
-      // Get a reference to the Power BI service
-      const powerbi = new service.Service(factories.hpmFactory, factories.wpmpFactory, factories.routerFactory)
-
-      // Embed the report
-      const report = powerbi.embed(reportContainerRef.current, embedConfig) as models.IReport
-
-      // Handle report loaded event
-      report.on("loaded", () => {
-        setIsLoading(false)
-        if (onReportLoaded) onReportLoaded()
-      })
-
-      // Handle report error event
-      report.on("error", (event) => {
-        setIsLoading(false)
-        setError(event.detail.message)
-        if (onReportError) onReportError(event.detail)
-      })
-
-      setReport(report)
-    } catch (error) {
-      console.error("Error embedding report:", error)
-      setIsLoading(false)
-      setError("Failed to load the report. Please try again later.")
-      if (onReportError) onReportError(error)
-    }
-  }
+  // Map of report IDs to actual embed URLs
+  // In a real application, you might fetch these from an API or environment variables
+  const reportEmbedUrls: Record<string, string> = {
+    // Use your actual Power BI embed URL here as default
+    "default": "eyJrIjoiZDA3N2Y2NTYtMTQxMS00MDFkLTk5YWYtNDMzNzY1ZGQwMDI3IiwidCI6ImVlMjkyOTc3LTdiNTgtNGRmNC04MTM4LTUwZDBkZTdkMjhkOCIsImMiOjh9",
+    "current-quarter-report-id": "eyJrIjoiZDA3N2Y2NTYtMTQxMS00MDFkLTk5YWYtNDMzNzY1ZGQwMDI3IiwidCI6ImVlMjkyOTc3LTdiNTgtNGRmNC04MTM4LTUwZDBkZTdkMjhkOCIsImMiOjh9",
+    "previous-quarter-report-id": "eyJrIjoiZDA3N2Y2NTYtMTQxMS00MDFkLTk5YWYtNDMzNzY1ZGQwMDI3IiwidCI6ImVlMjkyOTc3LTdiNTgtNGRmNC04MTM4LTUwZDBkZTdkMjhkOCIsImMiOjh9",
+    "year-to-date-report-id": "eyJrIjoiZDA3N2Y2NTYtMTQxMS00MDFkLTk5YWYtNDMzNzY1ZGQwMDI3IiwidCI6ImVlMjkyOTc3LTdiNTgtNGRmNC04MTM4LTUwZDBkZTdkMjhkOCIsImMiOjh9",
+    "custom-range-report-id": "eyJrIjoiZDA3N2Y2NTYtMTQxMS00MDFkLTk5YWYtNDMzNzY1ZGQwMDI3IiwidCI6ImVlMjkyOTc3LTdiNTgtNGRmNC04MTM4LTUwZDBkZTdkMjhkOCIsImMiOjh9",
+  };
 
   useEffect(() => {
-    embedReport()
-
-    // Cleanup function
-    return () => {
-      if (report) {
-        report.off("loaded")
-        report.off("error")
-        service.Service.reset(reportContainerRef.current!)
+    // Handle iframe load event
+    const handleLoad = () => {
+      if (onReportLoaded) {
+        onReportLoaded();
       }
-    }
-  }, [reportId, embedToken, embedUrl])
+    };
 
-  const handleRefresh = () => {
-    if (report) {
-      report.refresh()
-    } else {
-      embedReport()
+    // Handle iframe error event
+    const handleError = () => {
+      if (onReportError) {
+        onReportError();
+      }
+    };
+
+    const iframe = iframeRef.current;
+    if (iframe) {
+      iframe.addEventListener("load", handleLoad);
+      iframe.addEventListener("error", handleError);
     }
-  }
+
+    return () => {
+      if (iframe) {
+        iframe.removeEventListener("load", handleLoad);
+        iframe.removeEventListener("error", handleError);
+      }
+    };
+  }, [onReportLoaded, onReportError]);
+
+  // Get the embed URL for the current reportId
+  const reportEmbedUrl = reportEmbedUrls[reportId] || reportEmbedUrls.default;
+  
+  // Construct the full embed URL with filter pane and nav content pane parameters
+  const fullEmbedUrl = `${embedUrl}${reportEmbedUrl}&filterPaneEnabled=${filterPaneEnabled}&navContentPaneEnabled=${navContentPaneEnabled}&embedImagePlaceholder=true`;
 
   return (
-    <Card className={`overflow-hidden ${className}`}>
-      <CardContent className="p-0">
-        {error ? (
-          <div className="flex h-[500px] flex-col items-center justify-center space-y-4 p-6">
-            <p className="text-center text-red-500">{error}</p>
-            <Button onClick={handleRefresh}>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Try Again
-            </Button>
-          </div>
-        ) : (
-          <div className="relative">
-            {isLoading && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/80">
-                <div className="flex flex-col items-center space-y-4">
-                  <Skeleton className="h-[400px] w-full rounded-lg" />
-                  <div className="flex items-center space-x-2">
-                    <RefreshCw className="h-5 w-5 animate-spin text-blue-600" />
-                    <span>Loading report...</span>
-                  </div>
-                </div>
-              </div>
-            )}
-            <div
-              ref={reportContainerRef}
-              className="h-[600px] w-full"
-              style={{ minHeight: "600px" }}
-              data-powerbi-embed-type="report"
-            />
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
+    <div className="w-full h-[600px] border border-gray-200 rounded-md overflow-hidden">
+      <iframe
+        ref={iframeRef}
+        title="Power BI Report"
+        width="100%"
+        height="100%"
+        src={fullEmbedUrl}
+        frameBorder="0"
+        allowFullScreen={true}
+      />
+    </div>
+  );
 }

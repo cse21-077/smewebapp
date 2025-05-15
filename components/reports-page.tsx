@@ -7,17 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Download, Share2, Bookmark, RefreshCw } from "lucide-react"
-import dynamic from "next/dynamic"
-
-interface PowerBIReportProps {
-  reportId: string;
-  filterPaneEnabled: boolean;
-  navContentPaneEnabled: boolean;
-  onReportLoaded: () => void;
-  onReportError: () => void;
-}
-
-const PowerBIReport = dynamic<PowerBIReportProps>(() => import("@/components/power-bi-embed").then(mod => mod.PowerBIReport), { ssr: false })
+import { PowerBIReport } from "@/components/power-bi-embed"
 
 export function ReportsPage() {
   const [isLoading, setIsLoading] = useState(false)
@@ -74,8 +64,12 @@ export function ReportsPage() {
             </SelectContent>
           </Select>
 
-          <Button variant="outline" onClick={handleRefresh}>
-            <RefreshCw className="mr-2 h-4 w-4" />
+          <Button variant="outline" onClick={handleRefresh} disabled={isLoading}>
+            {isLoading ? (
+              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-2 h-4 w-4" />
+            )}
             Refresh
           </Button>
         </div>
@@ -113,16 +107,23 @@ export function ReportsPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {isReportLoaded ? (
+              {isLoading ? (
+                <div className="flex h-[500px] flex-col items-center justify-center space-y-4">
+                  <div className="flex items-center justify-center">
+                    <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                  <p className="text-muted-foreground">Loading report...</p>
+                </div>
+              ) : isReportLoaded ? (
                 <div className="space-y-4">
                   <PowerBIReport
                     reportId={reportIdMap[reportPeriod as keyof typeof reportIdMap]}
                     filterPaneEnabled={true}
-                    navContentPaneEnabled={true}
+                    navContentPaneEnabled={false}
                     onReportLoaded={() => setIsLoading(false)}
                     onReportError={() => {
-                      setIsLoading(false)
-                      setIsReportLoaded(false)
+                      setIsLoading(false);
+                      setIsReportLoaded(false);
                     }}
                   />
                   <div className="space-y-2">
