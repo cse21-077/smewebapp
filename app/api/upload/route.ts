@@ -4,6 +4,8 @@ import Papa from "papaparse"
 import fs from "fs"
 import path from "path"
 import os from "os"
+import { createServerComponentClient } from "@supabase/auth-helpers-nextjs"
+import { cookies } from "next/headers"
 
 const getDbClient = async () => {
   const uri = process.env.MONGODB_URI as string
@@ -13,6 +15,16 @@ const getDbClient = async () => {
 
 export async function POST(req: NextRequest) {
   try {
+    // Get user session
+    const supabase = createServerComponentClient({ cookies })
+    const { data: { session } } = await supabase.auth.getSession()
+    
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const userId = session.user.id
+
     // Log the incoming request details for debugging
     console.log("Upload request received for URL:", req.nextUrl.toString());
     
@@ -74,7 +86,15 @@ export async function POST(req: NextRequest) {
     const db = client.db("predictiq")
     const collection = db.collection(collectionName)
 
-    const result = await collection.insertMany(parsedData as Document[])
+    // Modify MongoDB insert to include user ID
+    const result = await collection.insertMany(
+      parsedData.map((item) => ({
+        ...(item as Document),
+        userId: userId,
+        createdAt: new Date()
+      }))
+    )
+
     console.log(`Inserted ${result.insertedCount} documents`);
 
     // Clean up the temp file
@@ -93,8 +113,17 @@ export async function POST(req: NextRequest) {
   }
 }
 
+// Update GET endpoint to filter by user
 export async function GET(req: NextRequest) {
   try {
+    const supabase = createServerComponentClient({ cookies })
+    const { data: { session } } = await supabase.auth.getSession()
+    
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const userId = session.user.id
     const dataType = req.nextUrl.searchParams.get("type") || "sales"
     const collectionName = `${dataType}_data`
 
@@ -102,7 +131,13 @@ export async function GET(req: NextRequest) {
     const db = client.db("predictiq")
     const collection = db.collection(collectionName)
 
-    const data = await collection.find().sort({ _id: -1 }).limit(10).toArray()
+    // Add user filter to query
+    const data = await collection
+      .find({ userId: userId })
+      .sort({ _id: -1 })
+      .limit(10)
+      .toArray()
+    
     await client.close()
 
     return NextResponse.json({ data })

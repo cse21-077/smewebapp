@@ -13,23 +13,124 @@ import { CalendarIcon, TrendingUp, Package, ArrowUpRight, AlertTriangle, DollarS
 import { format } from "date-fns";
 
 interface InsightsData {
-  historicalData?: Array<{ date: string; amount: number }>;
-  predictions?: Array<{ date: string; predicted: number }>;
-  needsReorder?: Array<{ name: string; currentStock: number; recommendedOrder: number }>;
-  metrics?: {
-    totalSales?: number;
-    monthlyGrowth?: number;
-    criticalItems?: number;
-    avgOrderValue?: number;
-    totalCustomers?: number;
-    totalStock?: number;
-    predictedGrowth?: number;
+  salesAnalysis: {
+    overall_metrics: {
+      total_revenue: number;
+      total_units: number;
+      average_ticket_size: number;
+      monthly_growth: number;
+    };
+    top_products: Array<{
+      product: string;
+      revenue: number;
+      units: number;
+      growth: number;
+      amount: number;
+    }>;
+    daily_sales: Array<{
+      date: string;
+      units_sold: number;
+      revenue: number;
+    }>;
   };
-  inventoryStatus?: { critical?: number };
-  trends?: Array<{ name: string; description: string; searchVolume: number }>;
-  recommendations?: Array<{ title: string; description: string; items?: Array<{ name: string; value: string }>; action: string }>;
-  lowStock?: Array<{ name: string; currentStock: number; daysRemaining: number }>;
-  topProducts?: Array<{ product: string; amount: number }>;
+  topProducts: Array<{
+    product: string;
+    revenue: number;
+    units: number;
+    growth: number;
+    amount: number;
+  }>;
+  predictions: {
+    historical: Array<{
+      date: string;
+      actual: number;
+      moving_average: number | null;
+    }>;
+    forecast: Array<{
+      date: string;
+      predicted: number;
+    }>;
+  };
+  inventoryInsights: Array<{
+    product: string;
+    revenue: number;
+    percentage: number;
+    category: 'A' | 'B' | 'C';
+    metrics: {
+      stock_level: number;
+      reorder_point: number;
+      avg_daily_sales: number;
+      lead_time: number;
+      safety_stock: number;
+      stock_coverage: number;
+    };
+  }>;
+  customerSegments: Array<{
+    demographic: string;
+    segment: string;
+    metrics: {
+      recency: string;
+      frequency: number;
+      monetary: number;
+    };
+    score: number;
+  }>;
+  trends: Array<{
+    name: string;
+    description: string;
+    searchVolume: number;
+  }>;
+  recommendations: Array<{
+    title: string;
+    description: string;
+    items: Array<{
+      name: string;
+      value: string;
+    }>;
+    action: string;
+  }>;
+  metrics: {
+    predictedGrowth: number;
+  };
+  needsReorder: Array<{
+    name: string;
+    recommendedOrder: number;
+  }>;
+  lowStock: Array<{
+    name: string;
+    currentStock: number;
+    daysRemaining: number;
+  }>;
+}
+
+// Also add type definitions for parameters
+interface TrendItem {
+  name: string;
+  description: string;
+  searchVolume: number;
+}
+
+interface RecommendationItem {
+  title: string;
+  description: string;
+  items: Array<{
+    name: string;
+    value: string;
+  }>;
+  action: string;
+}
+
+interface ReorderItem {
+  name: string;
+  recommendedOrder: number;
+}
+
+interface TopProduct {
+  product: string;
+  revenue: number;
+  units: number;
+  growth: number;
+  amount: number;
 }
 
 export function InsightsPage() {
@@ -44,8 +145,8 @@ export function InsightsPage() {
     const fetchInsights = async () => {
       setLoading(true);
       try {
-        const response = await fetch(`/api/process-data?type=${dataType}`, {
-          method: "GET",
+        const response = await fetch("/api/process-data", {
+          method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
@@ -138,27 +239,27 @@ export function InsightsPage() {
   }
 
   const formatChartData = () => {
-    if (activeTab === "demand" && data.historicalData && data.predictions) {
-      const historicalData = data.historicalData.map(item => ({
+    if (activeTab === "demand" && data?.predictions) {
+      const historicalData = data.predictions.historical.map(item => ({
         date: item.date,
-        amount: item.amount,
+        amount: item.actual,
         type: "Historical"
       }));
 
-      const predictionData = data.predictions.map(item => ({
+      const predictionData = data.predictions.forecast.map(item => ({
         date: item.date,
         amount: item.predicted,
         type: "Predicted"
       }));
 
-      return [...historicalData, ...predictionData].slice(-30);
+      return [...historicalData, ...predictionData];
     }
 
-    if (activeTab === "inventory" && data.needsReorder) {
-      return data.needsReorder.map(item => ({
-        name: item.name,
-        current: item.currentStock,
-        recommended: item.recommendedOrder + item.currentStock
+    if (activeTab === "inventory" && data?.inventoryInsights) {
+      return data.inventoryInsights.map(item => ({
+        name: item.product,
+        current: item.metrics.stock_level,
+        recommended: item.metrics.reorder_point
       }));
     }
 
@@ -166,15 +267,22 @@ export function InsightsPage() {
   };
 
   const getMetrics = () => {
-    if (!data || !data.metrics) return {};
+    if (!data?.salesAnalysis?.overall_metrics) return {};
+
+    const metrics = data.salesAnalysis.overall_metrics;
+    const criticalItems = data.inventoryInsights?.filter(
+      item => item.metrics.stock_level < item.metrics.reorder_point
+    ).length || 0;
 
     return {
-      totalSales: data.metrics.totalSales || 0,
-      monthlyGrowth: data.metrics.monthlyGrowth || 0,
-      criticalItems: data.inventoryStatus?.critical || 0,
-      avgOrderValue: data.metrics?.avgOrderValue || 0,
-      totalCustomers: data.metrics?.totalCustomers || 0,
-      totalStock: data.metrics?.totalStock || 0
+      totalSales: metrics.total_revenue,
+      monthlyGrowth: metrics.monthly_growth,
+      criticalItems,
+      avgOrderValue: metrics.average_ticket_size,
+      totalStock: data.inventoryInsights?.reduce(
+        (sum, item) => sum + item.metrics.stock_level, 0
+      ) || 0,
+      totalCustomers: data.customerSegments?.length || 0
     };
   };
 
@@ -328,7 +436,7 @@ export function InsightsPage() {
           </Card>
 
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {data.topProducts?.map((product, index) => (
+            {data.topProducts?.map((product: TopProduct, index: number) => (
               <Card key={index}>
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
@@ -371,6 +479,7 @@ export function InsightsPage() {
           </Card>
 
           <div className="grid gap-4 md:grid-cols-2">
+            {/* Low Stock Alert Card */}
             <Card className="border-red-200">
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
@@ -380,30 +489,22 @@ export function InsightsPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {data.lowStock ? (
-                    data.lowStock.map((item, index) => (
+                  {data?.inventoryInsights
+                    ?.filter(item => item.metrics.stock_level < item.metrics.reorder_point)
+                    .map((item, index) => (
                       <div key={index} className="flex items-center justify-between">
                         <div className="flex items-center">
                           <Package className="mr-2 h-4 w-4 text-red-500" />
-                          <span>{item.name}</span>
+                          <span>{item.product}</span>
                         </div>
                         <div className="text-sm font-medium">
-                          {item.currentStock} units
-                          <span className="text-red-500"> (Low)</span>
+                          {item.metrics.stock_level} units
+                          <span className="text-red-500">
+                            {` (Need ${item.metrics.reorder_point - item.metrics.stock_level} more)`}
+                          </span>
                         </div>
                       </div>
-                    ))
-                  ) : (
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        <Package className="mr-2 h-4 w-4 text-red-500" />
-                        <span>Maize Flour</span>
-                      </div>
-                      <div className="text-sm font-medium">
-                        46 units <span className="text-red-500">(Need 15 more)</span>
-                      </div>
-                    </div>
-                  )}
+                    ))}
                 </div>
                 <Button className="mt-4 w-full">Order Inventory</Button>
               </CardContent>
@@ -418,29 +519,17 @@ export function InsightsPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {data.needsReorder ? (
-                    data.needsReorder.map((item, index) => (
-                      <div key={index} className="flex items-center justify-between">
-                        <div className="flex items-center">
-                          <Package className="mr-2 h-4 w-4 text-yellow-500" />
-                          <span>{item.name}</span>
-                        </div>
-                        <div className="text-sm font-medium">
-                          Order {item.recommendedOrder} units
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="flex items-center justify-between">
+                  {data.needsReorder?.map((item: ReorderItem, index: number) => (
+                    <div key={index} className="flex items-center justify-between">
                       <div className="flex items-center">
                         <Package className="mr-2 h-4 w-4 text-yellow-500" />
-                        <span>Coke</span>
+                        <span>{item.name}</span>
                       </div>
                       <div className="text-sm font-medium">
-                        Order 30 units
+                        Order {item.recommendedOrder} units
                       </div>
                     </div>
-                  )}
+                  ))}
                 </div>
                 <Button variant="outline" className="mt-4 w-full">
                   Generate Purchase Order
@@ -458,7 +547,7 @@ export function InsightsPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-6">
-                {trendsData.map((trend, index) => (
+                {trendsData.map((trend: TrendItem, index: number) => (
                   <div key={index} className="space-y-2">
                     <div className="flex items-center">
                       <TrendingUp className="mr-2 h-5 w-5 text-green-500" />
@@ -590,7 +679,7 @@ export function InsightsPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
-            {recommendations.map((recommendation, index) => (
+            {recommendations.map((recommendation: RecommendationItem, index: number) => (
               <div key={index} className="rounded-lg border-l-4 border-blue-500 bg-blue-50 p-4">
                 <div className="flex items-center">
                   <AlertTriangle className="mr-2 h-5 w-5 text-blue-500" />
